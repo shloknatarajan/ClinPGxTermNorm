@@ -13,6 +13,3 @@ __pycache__
 
 # Environments
 .env
-
-# Data
-lookup_data
