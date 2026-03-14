@@ -5,25 +5,51 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "clinpgx-lookup"
 version = "0.1.0"
-description = "Fuzzy term lookup for ClinPGx-like TSVs: drugs, genes, variants, phenotypes"
+description = "Normalize clinical pharmacogenomics terms to ClinPGx database identifiers with fuzzy matching and API fallbacks"
 readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.9"
 authors = [
   { name = "Shlok Natarajan", email = "shlok.natarajan@gmail.com" },
 ]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Healthcare Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+keywords = [
+    "pharmacogenomics",
+    "clinpgx",
+    "pharmgkb",
+    "drug-normalization",
+    "variant-lookup",
+    "clinical-informatics",
+]
 dependencies = [
-  "pandas>=2.3",
-  "pydantic>=2.11.7",
-  "tqdm>=4.60.0",
+    "pandas>=2.0",
+    "pydantic>=2.0",
+    "requests>=2.28",
 ]
 
 [project.urls]
 Homepage = "https://github.com/shloknatarajan/clinpgx-lookup"
+Repository = "https://github.com/shloknatarajan/clinpgx-lookup"
+Issues = "https://github.com/shloknatarajan/clinpgx-lookup/issues"
 
-[project.scripts]
-clinpgx-lookup = "clinpgx_lookup.term_lookup:main"
-clinpgx-setup = "clinpgx_lookup.setup_data:main"
-clinpgx-check-data = "clinpgx_lookup.check_data:main"
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "black>=23.0",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -31,3 +57,6 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["clinpgx_lookup*"]
+
+[tool.setuptools.package-data]
+"clinpgx_lookup" = ["data/**/*.tsv", "data/**/*.txt"]

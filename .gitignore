@@ -4,6 +4,13 @@
 
 # Python
 __pycache__
+*.pyc
+dist/
+build/
+*.egg
+
+# Pickle caches (rebuilt at runtime)
+*.pkl
 
 # OS
 .DS_Store
@@ -13,3 +20,9 @@ __pycache__
 
 # Environments
 .env
+
+# Testing
+.pytest_cache/
+
+
+data/
