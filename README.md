@@ -1,47 +1,78 @@
-# ClinPGx Term Lookup
+# clinpgx-lookup
 
-## Goal
-Take a term and find it's closest occurency in ClinPGx databases
-You can choose whether or not this is a gene, drug, variant, phenotype, etc.
+Fuzzy term lookup for [ClinPGx](https://www.clinpgx.org/) / [PharmGKB](https://www.pharmgkb.org/):
+take a free-text drug or variant term and resolve it to its ClinPGx record.
 
-## Considerations
-- Some sort of cacheing mechanism for looking up the same variants would be nice
-- How / where to save the files needed for lookup/term matching would be good. Should not just be searching through raw tsvs
-- basic idea of what the algorithm should look like
-- Should maybe be able to search through the synonym list as well
-- Convert the files to pkl for better loading/storing
+It is **API-only** — no local data files to download. Lookups are served by the
+public [PharmGKB](https://api.pharmgkb.org/) and
+[RxNorm](https://rxnav.nlm.nih.gov/) APIs, so results stay current and the
+package stays small. An internet connection is required at lookup time.
 
-## Steps
-1. Highly prioritize drug and allele/variant lookup
-2. Rough plan for fallback mechanisms for both
-3. Implementation
-4. Package up into API
-5. Publish and use
+## Installation
 
-## Drugs
-- Search through the Name column for similarity
-- If no good maches, parse and search through generic names (also in pharmgkb table)
-    - For parsing through generic names, remove the non text data and stuff in brackets
-- Keep the columns ID, Name, Generic Names, Score
-- Need to turn the ID into a URL and add that to the DrugRecord object.
-- Fallback 1: RxNorm
-- Use approximateTerm endpoint to get top results.
+```bash
+pip install clinpgx-lookup
+```
 
-## Alleles
-- For RSIDs:
-    - Search through the pharmgkb list for rsID under 'Variant Name' column
-    - There are synonyms but let's save that for later
-    - If it doesn't show up there try tmVar3
-- For Star Alleles:
-    - Try the pharmgkb api
-    - Try the tmVar3 api
-    - Sort by score but prefer pharmgkb api
-- Problem
-    - The pharmgkb api doesn't fuzzy search for aliases. For example, UGT1A9*22 is not found but it is a known
-    alias for [rs3832043](https://www.clinpgx.org/variant/PA166155718).
+## Usage
 
+### Drugs
 
-## Questions
-- If you use one of the APIs, can you fuzzy search?
-- Is fuzzy search important? 
-    - Seems like it would be for drugs but for alleles/genes not sure
+```python
+from clinpgx_lookup import DrugLookup
+
+results = DrugLookup().search("warfarin")
+for r in results:
+    print(r.name, r.id, r.url, r.score, r.source)
+```
+
+The drug lookup:
+
+1. Tries an exact PharmGKB chemical name match.
+2. On a miss, fuzzy-matches the term with RxNorm's `approximateTerm` endpoint,
+   resolves it to its ingredient (so brand names like `Tylenol` map to
+   `acetaminophen`), and re-queries PharmGKB by that name.
+3. On a miss, returns the RxNorm result itself as a fallback (with
+   `source="rxnorm"`).
+
+So misspellings (`warfarn`) and trade names (`tylenol`) both resolve to the
+right PharmGKB chemical.
+
+### Variants
+
+```python
+from clinpgx_lookup import VariantLookup
+
+VariantLookup().search("rs1234")        # rsID  -> variant endpoint
+VariantLookup().search("CYP2C19*2")     # star allele -> haplotype endpoint
+```
+
+Terms starting with `rs` are looked up as rsIDs; everything else is treated as
+a star allele.
+
+### Result objects
+
+Both lookups return a list of Pydantic models with these fields:
+
+| Field       | Description                                  |
+| ----------- | -------------------------------------------- |
+| `raw_input` | The original query string                    |
+| `id`        | PharmGKB accession ID (or `RXN<rxcui>`)      |
+| `name`      | The matched name                             |
+| `url`       | Link to the ClinPGx (or RxNorm) record       |
+| `score`     | 0–1 fuzzy similarity to the query            |
+| `source`    | `"pharmgkb"` or `"rxnorm"`                    |
+
+## Command line
+
+```bash
+clinpgx-lookup warfarin --type drug
+clinpgx-lookup rs1234 --type variant
+```
+
+Output is JSON. Use `--top-k` and `--threshold` to tune results.
+
+## License
+
+MIT. Note that lookups query the PharmGKB and RxNorm APIs; their data is subject
+to their respective terms of use.

@@ -1,13 +1,24 @@
-from pydantic import BaseModel
-from typing import List, Optional, Any
+"""Drug/chemical lookup against the PharmGKB API, with RxNorm for fuzzy matching.
+
+Flow:
+1. Exact PharmGKB chemical lookup by name.
+2. On a miss, fuzzy-match the input with RxNorm's ``approximateTerm`` endpoint,
+   resolve the result to its ingredient (so brand names map to the ingredient
+   PharmGKB indexes), and re-query PharmGKB by that name.
+3. On a miss, return the RxNorm result itself as a fallback.
+"""
+
+from typing import List, Optional, Tuple
+
 import requests
-from src.clinpgx_lookup.search_utils import (
-    calc_similarity,
-    general_search,
-    general_search_comma_list,
-)
-import pandas as pd
 from loguru import logger
+from pydantic import BaseModel
+
+from .search_utils import calc_similarity
+
+PGKB_BASE = "https://api.pharmgkb.org/v1/data"
+RXNAV_BASE = "https://rxnav.nlm.nih.gov/REST"
+DEFAULT_TIMEOUT = 10
 
 
 class DrugSearchResult(BaseModel):
@@ -16,203 +27,137 @@ class DrugSearchResult(BaseModel):
     name: str
     url: str
     score: float
+    source: str = "pharmgkb"
 
 
-""" RxNorm Helpers """
+""" PharmGKB helpers """
 
 
-def get_first_rxnorm_candidate(data):
+def _pgkb_chemical_by_name(name: str) -> Optional[dict]:
+    """Return the first PharmGKB chemical matching ``name`` exactly, or None."""
+    try:
+        response = requests.get(
+            f"{PGKB_BASE}/chemical",
+            params={"name": name, "view": "base"},
+            timeout=DEFAULT_TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        logger.warning(f"PharmGKB chemical request failed: {exc}")
+        return None
+    if response.status_code != 200:
+        return None
+    data = response.json().get("data") or []
+    return data[0] if data else None
+
+
+""" RxNorm helpers """
+
+
+def _rxnorm_approximate(term: str) -> Optional[dict]:
+    """Return the top RxNorm ``approximateTerm`` candidate for ``term``, or None."""
+    try:
+        response = requests.get(
+            f"{RXNAV_BASE}/approximateTerm.json",
+            params={"term": term, "maxEntries": 1},
+            timeout=DEFAULT_TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        logger.warning(f"RxNorm approximateTerm request failed: {exc}")
+        return None
+    if response.status_code != 200:
+        return None
+    candidates = response.json().get("approximateGroup", {}).get("candidate", [])
+    return candidates[0] if candidates else None
+
+
+def _rxnorm_ingredient(rxcui: str) -> Optional[Tuple[str, str]]:
+    """Resolve an rxcui to its ingredient as ``(name, rxcui)``.
+
+    Brand names resolve to their ingredient; ingredients resolve to themselves.
     """
-    Get the first candidate object with RXNORM as the source.
-
-    Args:
-        data (dict): The response data dictionary
-
-    Returns:
-        dict or None: First candidate with RXNORM source, or None if not found
-    """
-    candidates = data.get("approximateGroup", {}).get("candidate", [])
-
-    for candidate in candidates:
-        if candidate.get("source") == "RXNORM":
-            return candidate
-
+    try:
+        response = requests.get(
+            f"{RXNAV_BASE}/rxcui/{rxcui}/related.json",
+            params={"tty": "IN"},
+            timeout=DEFAULT_TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        logger.warning(f"RxNorm related request failed: {exc}")
+        return None
+    if response.status_code != 200:
+        return None
+    for group in response.json().get("relatedGroup", {}).get("conceptGroup", []):
+        if group.get("tty") == "IN":
+            props = group.get("conceptProperties", [])
+            if props:
+                return props[0]["name"], props[0]["rxcui"]
     return None
 
 
-def rxnorm_search(drug_name: str) -> Optional[DrugSearchResult]:
-    url = "https://rxnav.nlm.nih.gov/REST/approximateTerm.json"
-    params = {"term": drug_name, "maxEntries": 1}
-    response = requests.get(url, params=params, timeout=5)
-    if response.status_code == 200:
-        data = response.json()
-        candidate = get_first_rxnorm_candidate(data)
-        if candidate:
-            rxcui = candidate["rxcui"]
-            url = f"https://ndclist.com/rxnorm/rxcui/{rxcui}"
-            name = candidate["name"]
-            score = calc_similarity(drug_name, name)
-            return DrugSearchResult(
-                raw_input=drug_name, id=f"RXN{rxcui}", name=name, url=url, score=score
-            )
-    return DrugSearchResult(
-        raw_input=drug_name, id="", name="Not Found", url="", score=0
-    )
+class DrugLookup:
+    """Look up drugs/chemicals in PharmGKB, falling back to RxNorm fuzzy search."""
 
-
-def rxcui_to_pa_id(raw_input: str, rxcui: str) -> Optional[List[DrugSearchResult]]:
-    """
-    Convert a RXCUI to a PharmGKB Accession Id using the 'RxNorm Identifiers' column in drugs.tsv.
-    """
-    local_path = "clinpgx_data/drugs/drugs.tsv"
-    df = pd.read_csv(local_path, sep="\t")
-    results = general_search(
-        df, rxcui, "RxNorm Identifiers", "PharmGKB Accession Id", threshold=0.8, top_k=1
-    )
-    # Convert to DrugSearchResult
-    if results:
-        return [
-            DrugSearchResult(
-                raw_input=raw_input,
-                id=result["PharmGKB Accession Id"],
-                name=result["Name"],
-                url=f"https://www.clinpgx.org/chemical/{result['PharmGKB Accession Id']}",
-                score=result["score"],
-            )
-            for result in results
-        ]
-    return []
-
-
-class DrugLookup(BaseModel):
-    data_path: str = "lookup_data/drugs/drugs.tsv"
-
-    def __init__(
-        self, data_path: str = "lookup_data/drugs/drugs.tsv", **data: Any
-    ) -> None:
-        super().__init__(data_path=data_path, **data)
-
-    def _clinpgx_drug_name_search(
-        self, drug_name: str, threshold: float = 0.8, top_k: int = 1
-    ) -> Optional[List[DrugSearchResult]]:
-        df = pd.read_csv(self.data_path, sep="\t")
-        results = general_search(
-            df,
-            drug_name,
-            "Name",
-            "PharmGKB Accession Id",
-            threshold=threshold,
-            top_k=top_k,
+    def _pgkb_result(self, raw_input: str, chemical: dict) -> DrugSearchResult:
+        return DrugSearchResult(
+            raw_input=raw_input,
+            id=chemical["id"],
+            name=chemical["name"],
+            url=f"https://www.clinpgx.org/chemical/{chemical['id']}",
+            score=calc_similarity(raw_input, chemical["name"]),
+            source="pharmgkb",
         )
-        if results:
-            return [
-                DrugSearchResult(
-                    raw_input=drug_name,
-                    id=result["PharmGKB Accession Id"],
-                    name=result["Name"],
-                    url=f"https://www.clinpgx.org/chemical/{result['PharmGKB Accession Id']}",
-                    score=result["score"],
-                )
-                for result in results
-            ]
-        return []
-
-    def _clinpgx_drug_alternatives_search(
-        self, drug_name: str, threshold: float = 0.8, top_k: int = 1
-    ) -> Optional[List[DrugSearchResult]]:
-        """
-        Checks generic names and trade names for the drug
-        """
-        df = pd.read_csv(self.data_path, sep="\t")
-        results = general_search_comma_list(
-            df,
-            drug_name,
-            "Generic Names",
-            "PharmGKB Accession Id",
-            threshold=threshold,
-            top_k=top_k,
-        )
-        results.extend(
-            general_search_comma_list(
-                df,
-                drug_name,
-                "Trade Names",
-                "PharmGKB Accession Id",
-                threshold=threshold,
-                top_k=top_k,
-            )
-        )
-        if results:
-            return [
-                DrugSearchResult(
-                    raw_input=drug_name,
-                    id=result["PharmGKB Accession Id"],
-                    name=result["Name"],
-                    url=f"https://www.clinpgx.org/chemical/{result['PharmGKB Accession Id']}",
-                    score=result["score"],
-                )
-                for result in results
-            ]
-        return []
-
-    def clinpgx_lookup(
-        self, drug_name: str, threshold: float = 0.8, top_k: int = 1
-    ) -> Optional[List[DrugSearchResult]]:
-        """
-        Main search function that tries name search first, then alternatives search if scores are too low.
-        """
-        # First try name search
-        name_results = self._clinpgx_drug_name_search(
-            drug_name, threshold=threshold, top_k=top_k
-        )
-
-        # If we have good results from name search, return them
-        if name_results and any(result.score >= threshold for result in name_results):
-            return name_results
-
-        # Otherwise, try alternatives search
-        alternatives_results = self._clinpgx_drug_alternatives_search(
-            drug_name, threshold=threshold, top_k=top_k
-        )
-
-        # Return the best results between name and alternatives
-        all_results = (name_results or []) + (alternatives_results or [])
-        if all_results:
-            # Sort by score and return top_k
-            all_results.sort(key=lambda x: x.score, reverse=True)
-            return all_results[:top_k]
-
-        return []
-
-    def rxnorm_lookup(self, drug_name: str) -> Optional[List[DrugSearchResult]]:
-        """
-        Search using RxNorm and convert results back to PharmGKB format using RxCUI to PA ID mapping.
-        """
-        # Get RxNorm result
-        rxnorm_result = rxnorm_search(drug_name)
-
-        # If no result or empty result, return empty list
-        if not rxnorm_result or not rxnorm_result.id or rxnorm_result.id == "":
-            return []
-
-        # Extract RxCUI from the ID (remove "RXN" prefix)
-        if rxnorm_result.id.startswith("RXN"):
-            rxcui = rxnorm_result.id[3:]  # Remove "RXN" prefix
-        else:
-            rxcui = rxnorm_result.id
-
-        # Convert RxCUI to PharmGKB PA ID
-        pharmgkb_results = rxcui_to_pa_id(drug_name, rxcui)
-
-        return pharmgkb_results if pharmgkb_results else []
 
     def search(
         self, drug_name: str, threshold: float = 0.8, top_k: int = 1
-    ) -> Optional[List[DrugSearchResult]]:
-        # Try ClinPGx first
-        results = self.clinpgx_lookup(drug_name, threshold=threshold, top_k=top_k)
-        if results:
-            return results
-        logger.warning("No strong results from ClinPGx, trying RxNorm")
-        # If no results from ClinPGx, try RxNorm
-        return self.rxnorm_lookup(drug_name)
+    ) -> List[DrugSearchResult]:
+        """Look up ``drug_name`` and return matching :class:`DrugSearchResult` records.
+
+        ``threshold`` and ``top_k`` are accepted for API compatibility; lookups
+        are resolved through exact PharmGKB matches and RxNorm fuzzy matching,
+        so at most one best match is returned.
+        """
+        drug_name = drug_name.strip()
+        if not drug_name:
+            return []
+
+        # 1. Exact PharmGKB name match.
+        chemical = _pgkb_chemical_by_name(drug_name)
+        if chemical:
+            return [self._pgkb_result(drug_name, chemical)][:top_k]
+
+        # 2. Fuzzy-match via RxNorm, then re-check PharmGKB.
+        candidate = _rxnorm_approximate(drug_name)
+        if not candidate:
+            logger.warning(f"No RxNorm candidate found for '{drug_name}'")
+            return []
+        rxcui = candidate.get("rxcui")
+
+        ingredient = _rxnorm_ingredient(rxcui) if rxcui else None
+        candidate_names = []
+        if ingredient:
+            candidate_names.append(ingredient[0])
+        if candidate.get("name"):
+            candidate_names.append(candidate["name"])
+
+        for name in candidate_names:
+            chemical = _pgkb_chemical_by_name(name)
+            if chemical:
+                return [self._pgkb_result(drug_name, chemical)][:top_k]
+
+        # 3. Fall back to the RxNorm result itself.
+        rx_name = ingredient[0] if ingredient else candidate.get("name", "")
+        if rxcui:
+            logger.warning(
+                f"'{drug_name}' resolved via RxNorm but not found in PharmGKB"
+            )
+            return [
+                DrugSearchResult(
+                    raw_input=drug_name,
+                    id=f"RXN{rxcui}",
+                    name=rx_name or "",
+                    url=f"{RXNAV_BASE}/rxcui/{rxcui}",
+                    score=calc_similarity(drug_name, rx_name) if rx_name else 0.0,
+                    source="rxnorm",
+                )
+            ]
+        return []

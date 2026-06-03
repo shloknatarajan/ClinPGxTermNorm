@@ -2,6 +2,10 @@
 .pixi
 *.egg-info
 
+# Build artifacts
+dist
+build
+
 # Python
 __pycache__
 

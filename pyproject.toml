@@ -5,25 +5,40 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "clinpgx-lookup"
 version = "0.1.0"
-description = "Fuzzy term lookup for ClinPGx-like TSVs: drugs, genes, variants, phenotypes"
+description = "Fuzzy term lookup for ClinPGx/PharmGKB: drugs and variants, via the PharmGKB and RxNorm APIs"
 readme = "README.md"
 requires-python = ">=3.9"
+license = { file = "LICENSE" }
 authors = [
   { name = "Shlok Natarajan", email = "shlok.natarajan@gmail.com" },
 ]
+keywords = ["pharmgkb", "clinpgx", "pharmacogenomics", "rxnorm", "drug", "variant", "lookup"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
 dependencies = [
-  "pandas>=2.3",
+  "requests>=2.32",
   "pydantic>=2.11.7",
-  "tqdm>=4.60.0",
+  "loguru>=0.7.3",
 ]
 
 [project.urls]
 Homepage = "https://github.com/shloknatarajan/clinpgx-lookup"
+Repository = "https://github.com/shloknatarajan/clinpgx-lookup"
+Issues = "https://github.com/shloknatarajan/clinpgx-lookup/issues"
 
 [project.scripts]
 clinpgx-lookup = "clinpgx_lookup.term_lookup:main"
-clinpgx-setup = "clinpgx_lookup.setup_data:main"
-clinpgx-check-data = "clinpgx_lookup.check_data:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -31,3 +46,6 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["clinpgx_lookup*"]
+
+[tool.setuptools.package-data]
+clinpgx_lookup = ["py.typed"]
