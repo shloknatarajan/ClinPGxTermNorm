@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "clinpgx-lookup"
+name = "clinpgx-term-lookup"
 dynamic = ["version"]
 description = "Fuzzy term lookup for ClinPGx/PharmGKB: drugs and variants, via the PharmGKB and RxNorm APIs"
 readme = "README.md"
@@ -38,17 +38,17 @@ Repository = "https://github.com/shloknatarajan/ClinPGxTermNorm"
 Issues = "https://github.com/shloknatarajan/ClinPGxTermNorm/issues"
 
 [project.scripts]
-clinpgx-lookup = "clinpgx_lookup.term_lookup:main"
+clinpgx-term-lookup = "clinpgx_term_lookup.term_lookup:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.dynamic]
-version = { attr = "clinpgx_lookup.__version__" }
+version = { attr = "clinpgx_term_lookup.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["clinpgx_lookup*"]
+include = ["clinpgx_term_lookup*"]
 
 [tool.setuptools.package-data]
-clinpgx_lookup = ["py.typed"]
+clinpgx_term_lookup = ["py.typed"]

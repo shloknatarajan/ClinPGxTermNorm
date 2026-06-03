@@ -1,4 +1,4 @@
-"""Command-line entry point for clinpgx-lookup."""
+"""Command-line entry point for clinpgx-term-lookup."""
 
 import argparse
 import json
@@ -9,7 +9,7 @@ from .variant_search import VariantLookup
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="clinpgx-lookup",
+        prog="clinpgx-term-lookup",
         description="Look up a drug or variant term in the ClinPGx/PharmGKB databases.",
     )
     parser.add_argument(

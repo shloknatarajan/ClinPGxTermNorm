@@ -1,12 +1,12 @@
 [workspace]
 authors = ["Shlok Natarajan <shlok.natarajan@gmail.com>"]
 channels = ["conda-forge"]
-name = "clinpgx-lookup"
+name = "clinpgx-term-lookup"
 platforms = ["osx-arm64"]
 version = "0.1.0"
 
 [tasks]
-clinpgx-lookup = { cmd = "python -m clinpgx_lookup.term_lookup" }
+clinpgx-term-lookup = { cmd = "python -m clinpgx_term_lookup.term_lookup" }
 
 [dependencies]
 pydantic = ">=2.11.7,<3"

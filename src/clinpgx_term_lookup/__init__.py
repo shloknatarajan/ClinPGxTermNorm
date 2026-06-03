@@ -1,4 +1,4 @@
-"""clinpgx-lookup: fuzzy term lookup for ClinPGx/PharmGKB drugs and variants."""
+"""clinpgx-term-lookup: fuzzy term lookup for ClinPGx/PharmGKB drugs and variants."""
 
 from .drug_search import DrugLookup, DrugSearchResult
 from .variant_search import VariantLookup, VariantSearchResult

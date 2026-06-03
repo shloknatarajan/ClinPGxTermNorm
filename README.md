@@ -1,4 +1,4 @@
-# clinpgx-lookup
+# clinpgx-term-lookup
 
 Fuzzy term lookup for [ClinPGx](https://www.clinpgx.org/) / [PharmGKB](https://www.pharmgkb.org/):
 take a free-text drug or variant term and resolve it to its ClinPGx record.
@@ -11,7 +11,7 @@ package stays small. An internet connection is required at lookup time.
 ## Installation
 
 ```bash
-pip install clinpgx-lookup
+pip install clinpgx-term-lookup
 ```
 
 ## Usage
@@ -19,7 +19,7 @@ pip install clinpgx-lookup
 ### Drugs
 
 ```python
-from clinpgx_lookup import DrugLookup
+from clinpgx_term_lookup import DrugLookup
 
 results = DrugLookup().search("warfarin")
 for r in results:
@@ -41,7 +41,7 @@ right PharmGKB chemical.
 ### Variants
 
 ```python
-from clinpgx_lookup import VariantLookup
+from clinpgx_term_lookup import VariantLookup
 
 VariantLookup().search("rs1234")        # rsID  -> variant endpoint
 VariantLookup().search("CYP2C19*2")     # star allele -> haplotype endpoint
@@ -66,8 +66,8 @@ Both lookups return a list of Pydantic models with these fields:
 ## Command line
 
 ```bash
-clinpgx-lookup warfarin --type drug
-clinpgx-lookup rs1234 --type variant
+clinpgx-term-lookup warfarin --type drug
+clinpgx-term-lookup rs1234 --type variant
 ```
 
 Output is JSON. Use `--top-k` and `--threshold` to tune results.
